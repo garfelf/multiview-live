@@ -734,4 +734,71 @@ export default function Home() {
                       {stream.isChannel
                         ? stream.liveStatus === 'checking'
                           ? 'Memeriksa siaran...'
-                       
+                          : 'Channel belum LIVE.'
+                        : 'Player tidak tersedia.'}
+                    </div>
+                  )}
+
+                  {/* LIVE CHAT BUBBLE */}
+                  {chatOpen[stream.key] &&
+                    stream.platform === 'YouTube' &&
+                    stream.id && (
+
+                    <div className="absolute bottom-3 left-3 right-3 z-10 h-[65%] overflow-hidden rounded-2xl border border-yellow-500/70 bg-black/90 shadow-xl">
+
+                      <div className="flex items-center justify-between bg-zinc-900 px-3 py-2">
+
+                        <span className="text-xs font-bold text-yellow-400">
+                          MSF LIVE CHAT
+                        </span>
+
+                        <button
+                          onClick={() => toggleChat(stream.key)}
+                          className="text-xs text-white"
+                        >
+                          TUTUP ✕
+                        </button>
+
+                      </div>
+
+                      <iframe
+                        src={chatUrl(stream)}
+                        title="Live Chat Bubble"
+                        className="h-[calc(100%-36px)] w-full"
+                      />
+
+                    </div>
+                  )}
+
+                </div>
+
+                {/* INFORMASI PLAYER */}
+                <div className="p-3">
+                  <span className="block truncate text-xs text-zinc-500">
+                    {stream.liveTitle || stream.originalUrl}
+                  </span>
+                </div>
+
+              </article>
+            );
+          })}
+
+        </div>
+
+        {/* FOOTER */}
+        <footer className="mt-12 border-t border-yellow-900/40 py-6 text-center">
+
+          <p className="font-black tracking-[.3em] text-yellow-500">
+            MSF MULTIVIEW
+          </p>
+
+          <p className="mt-2 text-xs text-zinc-600">
+            BLACK & YELLOW EDITION
+          </p>
+
+        </footer>
+
+      </div>
+    </main>
+  );
+}

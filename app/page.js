@@ -478,54 +478,86 @@ export default function Home() {
           </div>
 
           {/* DAFTAR CHANNEL PERMANEN */}
-          <div className="mb-5 overflow-hidden rounded-2xl border border-yellow-900/50">
+          {/* DAFTAR CHANNEL PERMANEN */}
+<div className="mb-5 overflow-hidden rounded-3xl border border-yellow-900/50 bg-zinc-950">
 
-            <button
-              onClick={() => setShowPermanent(v => !v)}
-              className="flex w-full items-center justify-between bg-zinc-900 p-4 text-left"
-            >
-              <span className="font-bold text-yellow-400">
-                CHANNEL PERMANEN
-              </span>
+  <button
+    onClick={() => setShowPermanent(v => !v)}
+    className="flex w-full items-center justify-between bg-zinc-900 p-5 text-left"
+  >
+    <span className="text-lg font-black tracking-wide text-yellow-400">
+      CHANNEL PERMANEN
+    </span>
 
-              <span className="text-yellow-400">
-                {showPermanent ? '▲' : '▼'}
-              </span>
-            </button>
+    <span className="text-xl text-yellow-400">
+      {showPermanent ? '⌃' : '⌄'}
+    </span>
+  </button>
 
-            {showPermanent && (
-              <div className="grid grid-cols-2 gap-2 p-3">
+  {showPermanent && (
+    <div className="grid grid-cols-2 gap-3 p-4">
 
-                {PERMANENT_CHANNELS.map(channel => {
-                  const added = streams.some(
-                    stream =>
-                      stream.isChannel &&
-                      stream.channelUrl === channel.url
-                  );
+      {PERMANENT_CHANNELS.map(channel => {
+        const added = streams.find(
+          stream =>
+            stream.isChannel &&
+            stream.channelUrl === channel.url
+        );
 
-                  return (
-                    <div
-  key={channel.url}
-  className="flex flex-col justify-between gap-3 rounded-xl border border-zinc-800 bg-black p-3"
->
-                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                        {channel.name}
-                      </span>
+        const isLive = added?.liveStatus === 'live';
 
-                      <button
-                        onClick={() => addPermanentChannel(channel)}
-                        disabled={added}
-                        className="rounded-lg bg-yellow-500 px-3 py-2 text-xs font-black text-black disabled:bg-zinc-700 disabled:text-zinc-400"
-                      >
-                        {added ? 'DITAMBAHKAN' : '+ TAMBAH'}
-                      </button>
-                    </div>
-                  );
-                })}
+        return (
+          <button
+            key={channel.url}
+            onClick={() => addPermanentChannel(channel)}
+            disabled={!!added}
+            className={`flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-4 text-left transition ${
+              isLive
+                ? 'border-red-900 bg-red-950/20 shadow-[0_0_12px_rgba(239,68,68,0.2)]'
+                : 'border-zinc-800 bg-zinc-900/70'
+            } ${added ? 'cursor-default' : 'active:scale-95'}`}
+          >
 
-              </div>
-            )}
-          </div>
+            {/* IKON YOUTUBE */}
+            <span className={`shrink-0 text-sm ${
+              isLive ? 'text-red-500' : 'text-zinc-700'
+            }`}>
+              ▶
+            </span>
+
+            {/* INDIKATOR */}
+            <span className={`h-2 w-2 shrink-0 rounded-full ${
+              isLive ? 'bg-red-500' : 'bg-zinc-600'
+            }`} />
+
+            {/* NAMA CHANNEL */}
+            <span className="min-w-0 flex-1 truncate text-xs font-black text-white">
+              {channel.name}
+            </span>
+
+            {/* STATUS */}
+            <span className={`shrink-0 text-[9px] font-black ${
+              isLive
+                ? 'text-red-500'
+                : added
+                  ? 'text-zinc-500'
+                  : 'text-yellow-500'
+            }`}>
+              {isLive
+                ? 'LIVE'
+                : added
+                  ? 'OFFLINE'
+                  : '+ TAMBAH'}
+            </span>
+
+          </button>
+        );
+      })}
+
+    </div>
+  )}
+
+</div>
 
           {/* PENGATURAN */}
           {showSettings && (

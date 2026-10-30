@@ -1,7 +1,15 @@
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
+// Cache sementara untuk mengurangi permintaan API.
+const CACHE_DURATION = 5 * 60 * 1000;
+
+const globalCache = globalThis.youtubeCache || new Map();
+globalThis.youtubeCache = globalCache;
+
 async function youtubeRequest(endpoint, params) {
-  const url = new URL(`https://www.googleapis.com/youtube/v3/${endpoint}`);
+  const url = new URL(
+    `https://www.googleapis.com/youtube/v3/${endpoint}`
+  );
 
   Object.entries({
     ...params,
@@ -10,40 +18,58 @@ async function youtubeRequest(endpoint, params) {
     url.searchParams.set(key, value);
   });
 
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, {
+    cache: "no-store",
+  });
+
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error?.message || "Gagal menghubungi YouTube API");
+    throw new Error(
+      data.error?.message || "Gagal menghubungi YouTube API"
+    );
   }
 
   return data;
 }
 
+// Mengambil ID channel.
 async function getChannelId(input) {
   let handle = input.trim();
 
   if (handle.startsWith("http")) {
     const url = new URL(handle);
 
-    if (!["youtube.com", "www.youtube.com", "m.youtube.com"].includes(url.hostname)) {
+    if (
+      !["youtube.com", "www.youtube.com", "m.youtube.com"].includes(
+        url.hostname
+      )
+    ) {
       throw new Error("URL harus berasal dari YouTube");
     }
 
     const parts = url.pathname.split("/").filter(Boolean);
+
     handle = parts[0] || "";
-    
-    if (handle === "channel" && parts[1]) return parts[1];
+
+    if (handle === "channel" && parts[1]) {
+      return parts[1];
+    }
 
     if (handle.startsWith("@")) {
       handle = handle.slice(1);
-    } else if (handle === "user" && parts[1]) {
-      handle = parts[1];
     } else {
-      throw new Error("Gunakan URL channel YouTube dengan format @handle atau /channel/ID");
+      throw new Error("Gunakan URL channel dengan format @handle");
     }
   } else {
     handle = handle.replace(/^@/, "");
+  }
+
+  const cacheKey = `channel:${handle.toLowerCase()}`;
+  const cached = globalCache.get(cacheKey);
+
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
   }
 
   const result = await youtubeRequest("channels", {
@@ -57,7 +83,53 @@ async function getChannelId(input) {
     throw new Error("Channel YouTube tidak ditemukan");
   }
 
+  globalCache.set(cacheKey, {
+    data: channelId,
+    expiry: Date.now() + 24 * 60 * 60 * 1000,
+  });
+
   return channelId;
+}
+
+// Memeriksa status LIVE.
+async function checkLive(channelId) {
+  const cacheKey = `live:${channelId}`;
+  const cached = globalCache.get(cacheKey);
+
+  if (cached && Date.now() < cached.expiry) {
+    return cached.data;
+  }
+
+  const result = await youtubeRequest("search", {
+    part: "snippet",
+    channelId,
+    type: "video",
+    eventType: "live",
+    maxResults: "1",
+  });
+
+  const live = result.items?.[0];
+
+  const data = live
+    ? {
+        live: true,
+        videoId: live.id.videoId,
+        title: live.snippet.title,
+        channelTitle: live.snippet.channelTitle,
+        channelId,
+      }
+    : {
+        live: false,
+        message: "Channel sedang tidak melakukan siaran langsung",
+      };
+
+  // Cache hasil LIVE maupun OFFLINE selama 5 menit.
+  globalCache.set(cacheKey, {
+    data,
+    expiry: Date.now() + CACHE_DURATION,
+  });
+
+  return data;
 }
 
 export async function GET(request) {
@@ -80,30 +152,12 @@ export async function GET(request) {
     }
 
     const channelId = await getChannelId(channel);
+    const data = await checkLive(channelId);
 
-    const result = await youtubeRequest("search", {
-      part: "snippet",
-      channelId,
-      type: "video",
-      eventType: "live",
-      maxResults: "5",
-    });
-
-    const live = result.items?.[0];
-
-    if (!live) {
-      return Response.json({
-        live: false,
-        message: "Channel tersebut sedang tidak melakukan siaran langsung",
-      });
-    }
-
-    return Response.json({
-      live: true,
-      videoId: live.id.videoId,
-      title: live.snippet.title,
-      channelTitle: live.snippet.channelTitle,
-      channelId,
+    return Response.json(data, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
     });
   } catch (error) {
     return Response.json(

@@ -15,7 +15,6 @@ function identifyUrl(raw) {
 
   const host = url.hostname.replace(/^www\./, '').toLowerCase();
 
-  // Deteksi URL channel YouTube
   if (['youtube.com', 'm.youtube.com'].includes(host)) {
     const parts = url.pathname.split('/').filter(Boolean);
 
@@ -28,22 +27,21 @@ function identifyUrl(raw) {
         platform: 'YouTube',
         isChannel: true,
         channelUrl: raw.trim(),
-        embed: '',
-        id: null
+        id: null,
+        embed: ''
       };
     }
   }
 
-  // Video YouTube
   if (host === 'youtu.be') {
     const id = url.pathname.split('/').filter(Boolean)[0];
 
-    if (!id) throw new Error('ID video YouTube tidak ditemukan.');
+    if (!id) throw new Error('ID video tidak ditemukan.');
 
     return {
       platform: 'YouTube',
-      embed: `https://www.youtube-nocookie.com/embed/${id}?autoplay=0&mute=1&playsinline=1`,
-      id
+      id,
+      embed: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1`
     };
   }
 
@@ -51,34 +49,27 @@ function identifyUrl(raw) {
     const id = url.searchParams.get('v') ||
       (url.pathname.match(/\/(?:live|embed|shorts)\/([^/?]+)/) || [])[1];
 
-    if (!id) {
-      throw new Error('Tautan YouTube bukan URL video atau channel yang valid.');
-    }
+    if (!id) throw new Error('URL video YouTube tidak valid.');
 
     return {
       platform: 'YouTube',
-      embed: `https://www.youtube-nocookie.com/embed/${id}?autoplay=0&mute=1&playsinline=1`,
-      id
+      id,
+      embed: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1`
     };
   }
 
-  // Video TikTok
   if (host.endsWith('tiktok.com')) {
     const match = url.pathname.match(/\/video\/(\d+)/);
 
     if (match) {
       return {
         platform: 'TikTok',
-        embed: `https://www.tiktok.com/player/v1/${match[1]}?music_info=1&description=1`,
-        id: match[1]
+        id: match[1],
+        embed: `https://www.tiktok.com/player/v1/${match[1]}?music_info=1&description=1`
       };
     }
 
-    if (url.pathname.includes('/live')) {
-      throw new Error('Tautan TikTok LIVE belum didukung untuk embed.');
-    }
-
-    throw new Error('Gunakan tautan video TikTok yang memiliki /video/ID.');
+    throw new Error('Gunakan URL video TikTok.');
   }
 
   throw new Error('Platform belum didukung.');
@@ -92,15 +83,13 @@ async function checkChannel(channelUrl) {
 
   const data = await response.json();
 
-  if (!response.ok) {
-    throw new Error(data.error || 'Gagal memeriksa channel.');
-  }
+  if (!response.ok) throw new Error(data.error || 'Gagal memeriksa channel.');
 
   return data;
 }
 
 function videoEmbed(id) {
-  return `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1`;
+  return `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1&enablejsapi=1`;
 }
 
 export default function Home() {
@@ -109,25 +98,21 @@ export default function Home() {
 
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
-  const [selected, setSelected] = useState(null);
   const [error, setError] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
-  const [listOpen, setListOpen] = useState(true);
+  const [selected, setSelected] = useState(null);
   const [columns, setColumns] = useState('1');
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [chatOpen, setChatOpen] = useState({});
+  const [chatModes, setChatModes] = useState({});
+  const [showSettings, setShowSettings] = useState(false);
 
   streamsRef.current = streams;
 
   useEffect(() => {
     try {
-      const saved = JSON.parse(
-        localStorage.getItem(STORAGE_KEY) || '[]'
-      );
-
-      if (Array.isArray(saved)) {
-        setStreams(saved.slice(0, 80));
-      }
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      if (Array.isArray(saved)) setStreams(saved.slice(0, 80));
     } catch {}
   }, []);
 
@@ -135,47 +120,45 @@ export default function Home() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(streams));
   }, [streams]);
 
-  // Periksa semua channel setiap 60 detik
+  async function syncChannels() {
+    setSyncing(true);
+
+    for (const stream of streamsRef.current.filter(s => s.isChannel)) {
+      try {
+        const data = await checkChannel(stream.channelUrl);
+
+        setStreams(current => current.map(item => {
+          if (item.key !== stream.key) return item;
+
+          if (!data.live) {
+            return {
+              ...item,
+              id: null,
+              embed: '',
+              liveStatus: 'offline'
+            };
+          }
+
+          return {
+            ...item,
+            id: data.videoId,
+            embed: videoEmbed(data.videoId),
+            liveTitle: data.title,
+            liveStatus: 'live'
+          };
+        }));
+      } catch (err) {
+        setError(err.message);
+      }
+    }
+
+    setSyncing(false);
+  }
+
   const hasChannels = streams.some(s => s.isChannel);
 
   useEffect(() => {
     if (!hasChannels) return;
-
-    async function syncChannels() {
-      const channels = streamsRef.current.filter(s => s.isChannel);
-
-      for (const stream of channels) {
-        try {
-          const data = await checkChannel(stream.channelUrl);
-
-          setStreams(current =>
-            current.map(item => {
-              if (item.key !== stream.key) return item;
-
-              if (!data.live) {
-                return {
-                  ...item,
-                  id: null,
-                  embed: '',
-                  liveTitle: '',
-                  liveStatus: 'offline'
-                };
-              }
-
-              return {
-                ...item,
-                id: data.videoId,
-                embed: videoEmbed(data.videoId),
-                liveTitle: data.title,
-                liveStatus: 'live'
-              };
-            })
-          );
-        } catch (err) {
-          console.error('Gagal sinkronisasi:', err);
-        }
-      }
-    }
 
     const timer = setInterval(syncChannels, 60000);
 
@@ -187,7 +170,8 @@ export default function Home() {
     setError('');
 
     if (streamsRef.current.length >= 80) {
-      return setError('Maksimal 80 sumber siaran.');
+      setError('Maksimal 80 sumber.');
+      return;
     }
 
     try {
@@ -196,31 +180,25 @@ export default function Home() {
       const item = {
         ...parsed,
         key: `${Date.now()}-${Math.random()}`,
-        name: name.trim() ||
-          `${parsed.platform} ${streamsRef.current.length + 1}`,
+        name: name.trim() || `MSF ${streamsRef.current.length + 1}`,
         originalUrl: url.trim(),
         liveStatus: parsed.isChannel ? 'checking' : 'live'
       };
 
       if (parsed.isChannel) {
         setSyncing(true);
+        const data = await checkChannel(parsed.channelUrl);
 
-        try {
-          const data = await checkChannel(parsed.channelUrl);
-
-          if (data.live) {
-            item.id = data.videoId;
-            item.embed = videoEmbed(data.videoId);
-            item.liveTitle = data.title;
-            item.liveStatus = 'live';
-          } else {
-            item.liveStatus = 'offline';
-          }
-        } catch (err) {
-          throw err;
-        } finally {
-          setSyncing(false);
+        if (data.live) {
+          item.id = data.videoId;
+          item.embed = videoEmbed(data.videoId);
+          item.liveTitle = data.title;
+          item.liveStatus = 'live';
+        } else {
+          item.liveStatus = 'offline';
         }
+
+        setSyncing(false);
       }
 
       setStreams(prev => [...prev, item]);
@@ -233,340 +211,323 @@ export default function Home() {
     }
   }
 
-  async function syncNow() {
-    setSyncing(true);
-    setError('');
-
-    const channels = streamsRef.current.filter(s => s.isChannel);
-
-    for (const stream of channels) {
-      try {
-        const data = await checkChannel(stream.channelUrl);
-
-        setStreams(current =>
-          current.map(item => {
-            if (item.key !== stream.key) return item;
-
-            if (!data.live) {
-              return {
-                ...item,
-                id: null,
-                embed: '',
-                liveTitle: '',
-                liveStatus: 'offline'
-              };
-            }
-
-            return {
-              ...item,
-              id: data.videoId,
-              embed: videoEmbed(data.videoId),
-              liveTitle: data.title,
-              liveStatus: 'live'
-            };
-          })
-        );
-      } catch (err) {
-        setError(err.message);
-      }
-    }
-
-    setSyncing(false);
+  function removeOne(key) {
+    setStreams(prev => prev.filter(s => s.key !== key));
+    if (selected === key) setSelected(null);
   }
 
   function removeAll() {
-    if (confirm('Hapus semua sumber siaran dari daftar?')) {
+    if (confirm('Hapus semua sumber siaran?')) {
       setStreams([]);
       setSelected(null);
     }
   }
 
-  function removeOne(key) {
-    setStreams(prev => prev.filter(s => s.key !== key));
+  function toggleSound() {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
 
-    if (selected === key) setSelected(null);
+    document.querySelectorAll('iframe').forEach(frame => {
+      if (!frame.src.includes('youtube')) return;
+
+      frame.contentWindow?.postMessage(
+        JSON.stringify({
+          event: 'command',
+          func: next ? 'unMute' : 'mute',
+          args: []
+        }),
+        '*'
+      );
+    });
   }
 
-  const gridStyle = {
-    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
-  };
+  function toggleChat(key) {
+    setChatOpen(prev => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function setChatMode(key, mode) {
+    setChatModes(prev => ({ ...prev, [key]: mode }));
+  }
+
+  function chatUrl(stream) {
+    if (!stream.id || typeof window === 'undefined') return '';
+
+    return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}`;
+  }
 
   return (
-    <main className="min-h-screen px-4 py-8 sm:px-7">
+    <main className="min-h-screen bg-black px-4 py-5 text-white sm:px-7">
       <div className="mx-auto max-w-6xl">
 
-        <header className="mb-8">
-          <p className="mb-2 text-xs font-bold tracking-[.28em] text-pink-500">
-            DASHBOARD STREAMING
-          </p>
+        <header className="mb-8 flex items-center justify-between border-b border-yellow-900/50 pb-5">
+          <div className="flex items-center gap-3">
+            <img
+              src="/msf-logo.webp"
+              alt="MSF"
+              className="h-14 w-14 rounded-full border border-yellow-500 object-cover"
+            />
+            <div>
+              <h1 className="text-2xl font-black tracking-widest text-yellow-400">
+                MSF
+              </h1>
+              <p className="text-[10px] tracking-[.25em] text-zinc-500">
+                MULTIVIEW LIVE
+              </p>
+            </div>
+          </div>
 
-          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-            MULTIVIEW KELUARGA
-          </h1>
-
-          <p className="mt-2 max-w-xl text-sm text-zinc-400 sm:text-base">
-            Pantau beberapa sudut pandang keluarga secara bersamaan.
-          </p>
+          <button
+            onClick={() => setShowSettings(v => !v)}
+            className="rounded-xl border border-yellow-800 px-4 py-3 text-yellow-400"
+          >
+            ⚙ PENGATURAN
+          </button>
         </header>
 
-        <section className="panel p-5 sm:p-7">
-
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <section className="mb-7 rounded-3xl border border-yellow-900/50 bg-zinc-950 p-5">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-lg font-bold">Siaran Aktif</div>
-              <div className="mt-1 text-sm text-zinc-400">
+              <h2 className="text-xl font-black text-yellow-400">
+                MSF STREAMING
+              </h2>
+              <p className="text-xs text-zinc-500">
                 {streams.length}/80 sumber tersimpan
-              </div>
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <button
-                className="btn border-amber-700 bg-amber-950/60 text-amber-300"
-                onClick={syncNow}
+                onClick={syncChannels}
                 disabled={syncing}
+                className="rounded-xl bg-yellow-500 px-4 py-3 text-xs font-black text-black"
               >
-                ⚡ {syncing ? 'MEMERIKSA...' : 'SYNC LIVE'}
+                {syncing ? 'SYNC...' : '● SYNC'}
               </button>
 
               <button
-                className="btn border-red-900 bg-red-950/50 text-red-300"
+                onClick={toggleSound}
+                className="rounded-xl border border-yellow-700 px-4 py-3 text-xs font-bold text-yellow-400"
+              >
+                {soundEnabled ? '🔊 SUARA' : '🔇 MUTE'}
+              </button>
+
+              <button
                 onClick={removeAll}
+                className="rounded-xl border border-red-900 px-4 py-3 text-xs text-red-400"
               >
-                KOSONGKAN
-              </button>
-
-              <button
-                className="btn"
-                onClick={() => setListOpen(v => !v)}
-              >
-                {listOpen ? '⌃ TUTUP' : '⌄ BUKA'}
-              </button>
-
-              <button
-                className="btn"
-                onClick={() => setShowSettings(v => !v)}
-              >
-                ☷ PENGATURAN
+                HAPUS SEMUA
               </button>
             </div>
           </div>
 
           {showSettings && (
-            <div className="mt-5 flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-800 bg-black/30 p-4 text-sm">
-              <label htmlFor="columns" className="text-zinc-300">
-                Kolom player:
+            <div className="mb-5 rounded-xl border border-zinc-800 p-4">
+              <label className="text-sm text-zinc-400">
+                Jumlah kolom player
               </label>
-
               <select
-                id="columns"
                 value={columns}
                 onChange={e => setColumns(e.target.value)}
-                className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2"
+                className="mt-2 w-full rounded-xl border border-zinc-700 bg-black p-3"
               >
                 <option value="1">1 kolom</option>
                 <option value="2">2 kolom</option>
                 <option value="3">3 kolom</option>
               </select>
-
-              <span className="text-zinc-500">
-                Daftar disimpan otomatis di browser perangkat ini.
-              </span>
             </div>
           )}
 
-          {listOpen && (
-            <>
-              <div className="my-6 border-t border-zinc-800" />
-
-              {streams.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-zinc-700 p-8 text-center text-sm text-zinc-500">
-                  Belum ada sumber siaran. Tambahkan tautan YouTube atau TikTok di bawah.
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {streams.map(stream => (
-                    <div
-                      key={stream.key}
-                      className={`stream-chip ${selected === stream.key ? 'selected' : ''}`}
-                    >
-                      <button
-                        onClick={() => setSelected(stream.key)}
-                        className="flex min-w-0 flex-1 items-center gap-2"
-                      >
-                        <span className="text-xs">
-                          {stream.platform === 'TikTok' ? '♪' : '▶'}
-                        </span>
-
-                        <span className="truncate text-sm font-bold">
-                          {stream.name}
-                        </span>
-                      </button>
-
-                      <button
-                        onClick={() => removeOne(stream.key)}
-                        className="text-xs text-zinc-500 hover:text-white"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          <div className="my-6 border-t border-zinc-800" />
-
           <form onSubmit={addStream} className="grid gap-3">
-
             <input
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="Nama Siaran (contoh: Keluarga)"
+              placeholder="Nama Siaran"
               maxLength={60}
+              className="w-full rounded-xl border border-zinc-700 bg-black p-4 outline-none focus:border-yellow-500"
             />
 
             <input
               value={url}
               onChange={e => setUrl(e.target.value)}
-              placeholder="🔗 URL Video atau Channel YouTube / TikTok"
+              placeholder="URL Channel YouTube / Video / TikTok"
               type="url"
               required
+              className="w-full rounded-xl border border-zinc-700 bg-black p-4 outline-none focus:border-yellow-500"
             />
 
-            {error && (
-              <p role="alert" className="text-sm text-red-400">
-                {error}
-              </p>
-            )}
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
             <button
-              className="btn w-full rounded-2xl py-5 text-sm text-zinc-200"
-              type="submit"
               disabled={syncing}
+              className="rounded-xl bg-yellow-500 p-4 font-black tracking-wider text-black disabled:opacity-50"
             >
-              {syncing ? 'MEMERIKSA CHANNEL...' : '＋ TAMBAH LINK'}
+              {syncing ? 'MEMERIKSA...' : '+ TAMBAH LINK'}
             </button>
           </form>
-
         </section>
 
-        <section className="mt-8">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-xl font-black text-yellow-400">
+            LIVE MULTIVIEW
+          </h2>
+          <span className="text-xs text-zinc-500">
+            {streams.length} PLAYER
+          </span>
+        </div>
 
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-extrabold">
-              Tampilan MultiView
-            </h2>
+        <div
+          className="grid gap-6"
+          style={{
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
+          }}
+        >
+          {streams.map(stream => {
+            const mode = chatModes[stream.key] || 'bubble';
 
-            <span className="text-xs text-zinc-500">
-              {streams.length} sumber
-            </span>
-          </div>
+            return (
+              <article
+                key={stream.key}
+                className={`overflow-hidden rounded-3xl border bg-zinc-950 ${
+                  selected === stream.key
+                    ? 'border-yellow-400 shadow-lg shadow-yellow-900/20'
+                    : 'border-zinc-800'
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 p-3">
+                  <span className="h-2 w-2 rounded-full bg-yellow-400" />
 
-          {streams.length === 0 ? (
-            <div className="panel p-8 text-center text-sm text-zinc-500">
-              Player akan muncul setelah kamu menambahkan tautan.
-            </div>
-          ) : (
-            <div className="grid gap-5" style={gridStyle}>
+                  <span className="min-w-0 flex-1 truncate font-bold">
+                    {stream.name}
+                  </span>
 
-              {streams.map(stream => (
-                <article
-                  key={stream.key}
-                  className={`overflow-hidden rounded-3xl border ${
-                    selected === stream.key
-                      ? 'border-pink-600/70'
-                      : 'border-zinc-800'
-                  } bg-[#111115]`}
-                >
+                  <span className="text-[10px] text-yellow-500">
+                    {stream.isChannel
+                      ? stream.liveStatus === 'live' ? 'LIVE' : 'OFFLINE'
+                      : stream.platform}
+                  </span>
 
-                  <div className="flex items-center gap-2 border-b border-zinc-800 px-4 py-3">
-                    <span className="h-2 w-2 rounded-full bg-pink-500" />
+                  <button
+                    onClick={() => setSelected(stream.key)}
+                    className="rounded-lg border border-yellow-800 px-3 py-2 text-xs text-yellow-400"
+                  >
+                    PILIH
+                  </button>
 
-                    <span className="min-w-0 flex-1 truncate text-sm font-bold">
-                      {stream.name}
-                    </span>
+                  <button
+                    onClick={() => toggleChat(stream.key)}
+                    className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                      chatOpen[stream.key]
+                        ? 'bg-yellow-500 text-black'
+                        : 'border border-zinc-700 text-yellow-400'
+                    }`}
+                  >
+                    ▢ CHAT
+                  </button>
 
-                    <span className="text-[10px] text-zinc-500">
-                      {stream.isChannel
-                        ? stream.liveStatus === 'live'
-                          ? 'LIVE'
-                          : stream.liveStatus === 'offline'
-                            ? 'OFFLINE'
-                            : 'CHECKING'
-                        : stream.platform}
-                    </span>
+                  <button
+                    onClick={() => removeOne(stream.key)}
+                    className="rounded-lg border border-red-900 px-3 py-2 text-xs text-red-400"
+                  >
+                    ✕
+                  </button>
+                </div>
 
-                    <button
-                      onClick={() => setSelected(stream.key)}
-                      className="rounded-full border border-zinc-700 px-3 py-1 text-xs"
-                    >
-                      PILIH
-                    </button>
-                  </div>
-
+                <div className="relative aspect-video bg-black">
                   {stream.embed ? (
-                    <div className="aspect-video bg-black">
-                      <iframe
-                        key={`${stream.key}-${stream.id}-${soundEnabled}`}
-                        src={
-  stream.platform === 'YouTube'
-    ? stream.embed
-        .replace('autoplay=0', 'autoplay=1')
-        .replace('mute=1', `mute=${soundEnabled ? '0' : '1'}`)
-    : stream.embed
-}
-                        title={stream.name}
-                        className="h-full w-full"
-                        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                        allowFullScreen
-                        loading="lazy"
-                        referrerPolicy="strict-origin-when-cross-origin"
-                      />
-                    </div>
+                    <iframe
+                      key={`${stream.key}-${stream.id}`}
+                      src={
+                        stream.platform === 'YouTube'
+                          ? `${stream.embed}&enablejsapi=1`
+                          : stream.embed
+                      }
+                      title={stream.name}
+                      className="h-full w-full"
+                      allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                      allowFullScreen
+                      loading="lazy"
+                    />
                   ) : (
-                    <div className="flex aspect-video items-center justify-center bg-black p-5 text-center text-sm text-zinc-400">
+                    <div className="flex h-full items-center justify-center text-sm text-zinc-500">
                       {stream.isChannel
-                        ? stream.liveStatus === 'offline'
-                          ? 'Channel belum melakukan siaran LIVE.'
-                          : 'Sedang mencari siaran LIVE...'
+                        ? 'Channel belum LIVE.'
                         : 'Player tidak tersedia.'}
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between gap-2 px-4 py-3">
-                    <span className="truncate text-xs text-zinc-500">
-                      {stream.liveTitle || stream.originalUrl}
-                    </span>
+                  {chatOpen[stream.key] && stream.platform === 'YouTube' && stream.id && mode === 'bubble' && (
+                    <div className="absolute bottom-3 left-3 right-3 z-10 h-[65%] overflow-hidden rounded-2xl border border-yellow-500/70 bg-black/90 shadow-xl">
+                      <div className="flex items-center justify-between bg-zinc-900 px-3 py-2">
+                        <span className="text-xs font-bold text-yellow-400">
+                          MSF LIVE CHAT
+                        </span>
+                        <button
+                          onClick={() => toggleChat(stream.key)}
+                          className="text-xs text-white"
+                        >
+                          TUTUP ✕
+                        </button>
+                      </div>
 
-                    <button
-                      onClick={() => removeOne(stream.key)}
-                      className="shrink-0 text-xs text-red-400"
-                    >
-                      Hapus
-                    </button>
+                      <iframe
+                        src={chatUrl(stream)}
+                        title="Live Chat Bubble"
+                        className="h-[calc(100%-36px)] w-full"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {chatOpen[stream.key] && stream.platform === 'YouTube' && stream.id && mode === 'embed' && (
+                  <div className="border-t border-yellow-900/50">
+                    <div className="flex items-center justify-between p-3">
+                      <span className="text-sm font-bold text-yellow-400">
+                        LIVE CHAT
+                      </span>
+                      <button
+                        onClick={() => toggleChat(stream.key)}
+                        className="text-xs text-zinc-400"
+                      >
+                        TUTUP ✕
+                      </button>
+                    </div>
+
+                    <iframe
+                      src={chatUrl(stream)}
+                      title="YouTube Live Chat"
+                      className="h-80 w-full bg-black"
+                    />
                   </div>
+                )}
 
-                </article>
-              ))}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3">
+                  <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
+                    {stream.liveTitle || stream.originalUrl}
+                  </span>
 
-            </div>
-          )}
+                  {stream.platform === 'YouTube' && stream.id && (
+                    <select
+                      value={mode}
+                      onChange={e => setChatMode(stream.key, e.target.value)}
+                      className="rounded-lg border border-yellow-900 bg-black px-2 py-2 text-xs text-yellow-400"
+                    >
+                      <option value="bubble">CHAT BUBBLE</option>
+                      <option value="embed">CHAT EMBED</option>
+                    </select>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
-            <span>
-              Player YouTube dimulai dalam keadaan mute. Aktifkan suara melalui kontrol player.
-            </span>
-
-            <span>
-              Data tersimpan lokal di browser.
-            </span>
-          </div>
-
-        </section>
-
-        <footer className="mt-12 border-t border-zinc-900 pt-5 text-center text-xs text-zinc-600">
-          MULTIVIEW KELUARGA · Versi awal
+        <footer className="mt-12 border-t border-yellow-900/40 py-6 text-center">
+          <p className="font-black tracking-[.3em] text-yellow-500">
+            MSF MULTIVIEW
+          </p>
+          <p className="mt-2 text-xs text-zinc-600">
+            BLACK & YELLOW EDITION
+          </p>
         </footer>
 
       </div>

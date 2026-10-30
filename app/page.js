@@ -100,7 +100,7 @@ async function checkChannel(channelUrl) {
 }
 
 function videoEmbed(id) {
-  return `https://www.youtube-nocookie.com/embed/${id}?autoplay=0&mute=1&playsinline=1`;
+  return `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&mute=1&playsinline=1`;
 }
 
 export default function Home() {
@@ -113,7 +113,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [listOpen, setListOpen] = useState(true);
-  const [columns, setColumns] = useState('2');
+  const [columns, setColumns] = useState('1');
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -510,13 +510,12 @@ export default function Home() {
                       <iframe
                         key={`${stream.key}-${stream.id}-${soundEnabled}`}
                         src={
-                          stream.platform === 'YouTube'
-                            ? stream.embed.replace(
-                                'mute=1',
-                                `mute=${soundEnabled ? '0' : '1'}`
-                              )
-                            : stream.embed
-                        }
+  stream.platform === 'YouTube'
+    ? stream.embed
+        .replace('autoplay=0', 'autoplay=1')
+        .replace('mute=1', `mute=${soundEnabled ? '0' : '1'}`)
+    : stream.embed
+}
                         title={stream.name}
                         className="h-full w-full"
                         allow="autoplay; encrypted-media; picture-in-picture; fullscreen"

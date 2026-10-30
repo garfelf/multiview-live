@@ -16,6 +16,10 @@ const PERMANENT_CHANNELS = [
   {
     name: 'Munkar A Bellamy',
     url: 'https://youtube.com/@munkar.abellamy'
+  },
+  {
+    name: 'Slebew Gaming',
+    url: 'https://youtube.com/@slebewgamingventra'
   }
 ];
 
@@ -490,7 +494,7 @@ export default function Home() {
             </button>
 
             {showPermanent && (
-              <div className="divide-y divide-zinc-800">
+              <div className="grid grid-cols-2 gap-2 p-3">
 
                 {PERMANENT_CHANNELS.map(channel => {
                   const added = streams.some(
@@ -501,9 +505,9 @@ export default function Home() {
 
                   return (
                     <div
-                      key={channel.url}
-                      className="flex items-center justify-between gap-3 p-4"
-                    >
+  key={channel.url}
+  className="flex flex-col justify-between gap-3 rounded-xl border border-zinc-800 bg-black p-3"
+>
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                         {channel.name}
                       </span>

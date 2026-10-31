@@ -65,7 +65,8 @@ function identifyUrl(raw) {
   }
 
   if (host === 'youtube.com' || host === 'm.youtube.com') {
-    const id = url.searchParams.get('v') ||
+    const id =
+      url.searchParams.get('v') ||
       (url.pathname.match(/\/(?:live|embed|shorts)\/([^/?]+)/) || [])[1];
 
     if (!id) throw new Error('URL video YouTube tidak valid.');
@@ -117,24 +118,20 @@ export default function Home() {
   const [streams, setStreams] = useState([]);
   const streamsRef = useRef([]);
 
+  const [channelStatus, setChannelStatus] = useState({});
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [columns, setColumns] = useState('1');
-  const [syncing, setSyncing] = useState(false);
-
   const [chatOpen, setChatOpen] = useState({});
-  const [mutedPlayers, setMutedPlayers] = useState({});
   const [showSettings, setShowSettings] = useState(false);
   const [showPermanent, setShowPermanent] = useState(true);
-  const [permanentStatuses, setPermanentStatuses] = useState({});
-  const [clock, setClock] = useState(0);
-
-  const syncingRef = useRef(false);
+  const [syncing, setSyncing] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   streamsRef.current = streams;
 
-  // Memuat sumber pribadi dari perangkat.
+  // Memuat player tersimpan
   useEffect(() => {
     try {
       const saved = JSON.parse(
@@ -144,95 +141,156 @@ export default function Home() {
       if (Array.isArray(saved)) {
         setStreams(saved);
       }
-    } catch {}
+    } catch {
+      setStreams([]);
+    }
   }, []);
 
-  // Menyimpan sumber pribadi.
+  // Menyimpan player
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(streams));
   }, [streams]);
 
-  // Jam pembaruan tampilan setiap 1 detik.
+  // Memeriksa semua channel permanen
+  async function syncPermanentChannels() {
+    setSyncing(true);
+
+    const results = await Promise.all(
+      PERMANENT_CHANNELS.map(async channel => {
+        try {
+          const data = await checkChannel(channel.url);
+
+          return {
+            name: channel.name,
+            url: channel.url,
+            status: data.live ? 'live' : 'offline',
+            videoId: data.videoId || null,
+            title: data.title || ''
+          };
+        } catch (err) {
+          return {
+            name: channel.name,
+            url: channel.url,
+            status: 'error',
+            message: err.message
+          };
+        }
+      })
+    );
+
+    const updated = {};
+
+    results.forEach(item => {
+      updated[item.url] = item;
+    });
+
+    setChannelStatus(updated);
+
+    setSyncing(false);
+  }
+
+  // Pemeriksaan awal dan berkala.
+  // Interval 15 menit digunakan untuk menghemat kuota YouTube API.
   useEffect(() => {
+    syncPermanentChannels();
+
     const timer = setInterval(() => {
-      setClock(value => value + 1);
-    }, 1000);
+      syncPermanentChannels();
+    }, 15 * 60 * 1000);
 
     return () => clearInterval(timer);
   }, []);
 
-  // Pemeriksaan status LIVE melalui YouTube API.
+  // Memeriksa channel tambahan
   async function syncChannels() {
-    if (syncingRef.current) return;
+    setSyncing(true);
+    setError('');
 
     const channels = streamsRef.current.filter(
-      stream => stream.isChannel
+      item => item.isChannel
     );
 
-    if (!channels.length) return;
+    for (const stream of channels) {
+      try {
+        const data = await checkChannel(stream.channelUrl);
 
-    syncingRef.current = true;
-    setSyncing(true);
+        setStreams(current =>
+          current.map(item => {
+            if (item.key !== stream.key) return item;
 
-    try {
-      for (const stream of channels) {
-        try {
-          const data = await checkChannel(stream.channelUrl);
-
-          setStreams(current =>
-            current.map(item => {
-              if (item.key !== stream.key) return item;
-
-              if (!data.live) {
-                return {
-                  ...item,
-                  id: null,
-                  embed: '',
-                  liveStatus: 'offline'
-                };
-              }
-
-              // Tidak memuat ulang player jika video masih sama.
-              if (item.id === data.videoId) {
-                return {
-                  ...item,
-                  liveTitle: data.title,
-                  liveStatus: 'live'
-                };
-              }
-
+            if (!data.live) {
               return {
                 ...item,
-                id: data.videoId,
-                embed: videoEmbed(data.videoId),
-                liveTitle: data.title,
-                liveStatus: 'live'
+                id: null,
+                embed: '',
+                liveStatus: 'offline'
               };
-            })
-          );
-        } catch (err) {
-          console.error(err);
-        }
+            }
+
+            return {
+              ...item,
+              id: data.videoId,
+              embed: videoEmbed(data.videoId),
+              liveTitle: data.title,
+              liveStatus: 'live'
+            };
+          })
+        );
+      } catch (err) {
+        setError(err.message);
       }
-    } finally {
-      syncingRef.current = false;
-      setSyncing(false);
     }
+
+    await syncPermanentChannels();
+
+    setSyncing(false);
   }
 
-  const hasChannels = streams.some(stream => stream.isChannel);
+  // Klik channel permanen
+  function addPermanentChannel(channel) {
+    const status = channelStatus[channel.url];
 
-  useEffect(() => {
-    if (!hasChannels) return;
+    if (!status || status.status === 'checking') {
+      setError('Status channel sedang diperiksa.');
+      return;
+    }
 
-    const timer = setInterval(() => {
-      syncChannels();
-    }, 60000);
+    if (status.status === 'error') {
+      setError(status.message || 'Gagal memeriksa channel.');
+      return;
+    }
 
-    return () => clearInterval(timer);
-  }, [hasChannels]);
+    if (status.status !== 'live' || !status.videoId) {
+      setError(`${channel.name} sedang tidak LIVE.`);
+      return;
+    }
 
-  // Menambahkan sumber pribadi.
+    const exists = streamsRef.current.some(
+      item => item.id === status.videoId
+    );
+
+    if (exists) {
+      setError('Channel tersebut sudah ada di player.');
+      return;
+    }
+
+    const item = {
+      key: `${Date.now()}-${Math.random()}`,
+      name: channel.name,
+      platform: 'YouTube',
+      id: status.videoId,
+      embed: videoEmbed(status.videoId),
+      originalUrl: channel.url,
+      liveTitle: status.title,
+      liveStatus: 'live',
+      isPermanent: true
+    };
+
+    setStreams(prev => [...prev, item]);
+    setError('');
+  }
+
+  // Tambah link pribadi
   async function addStream(e) {
     e.preventDefault();
     setError('');
@@ -261,142 +319,48 @@ export default function Home() {
         } else {
           item.liveStatus = 'offline';
         }
-
-        setSyncing(false);
       }
 
       setStreams(prev => [...prev, item]);
 
       setName('');
       setUrl('');
+      setError('');
     } catch (err) {
       setError(err.message);
-      setSyncing(false);
-    }
-  }
-
-  // Menambahkan channel permanen ke player.
-  async function addPermanentChannel(channel) {
-    setError('');
-
-    const exists = streamsRef.current.some(
-      stream => stream.isChannel &&
-        stream.channelUrl === channel.url
-    );
-
-    if (exists) {
-      setError(`${channel.name} sudah ditambahkan.`);
-      return;
     }
 
-    const item = {
-      platform: 'YouTube',
-      isChannel: true,
-      channelUrl: channel.url,
-      originalUrl: channel.url,
-      id: null,
-      embed: '',
-      key: `${Date.now()}-${Math.random()}`,
-      name: channel.name,
-      liveStatus: 'checking'
-    };
-
-    setStreams(prev => [...prev, item]);
-
-    try {
-      const data = await checkChannel(channel.url);
-
-      setStreams(current =>
-        current.map(stream => {
-          if (stream.key !== item.key) return stream;
-
-          if (!data.live) {
-            return {
-              ...stream,
-              liveStatus: 'offline'
-            };
-          }
-
-          return {
-            ...stream,
-            id: data.videoId,
-            embed: videoEmbed(data.videoId),
-            liveTitle: data.title,
-            liveStatus: 'live'
-          };
-        })
-      );
-    } catch (err) {
-      setError(err.message);
-
-      setStreams(current =>
-        current.map(stream =>
-          stream.key === item.key
-            ? { ...stream, liveStatus: 'offline' }
-            : stream
-        )
-      );
-    }
+    setSyncing(false);
   }
 
   function removeOne(key) {
-    setStreams(prev =>
-      prev.filter(stream => stream.key !== key)
-    );
-
-    setChatOpen(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-
-    setMutedPlayers(prev => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
+    setStreams(prev => prev.filter(item => item.key !== key));
   }
 
   function removeAll() {
-    if (confirm('Kosongkan semua player pribadi?')) {
+    if (confirm('Kosongkan semua player?')) {
       setStreams([]);
       setChatOpen({});
-      setMutedPlayers({});
     }
   }
 
-  // Kontrol suara masing-masing player.
-  function togglePlayerSound(key) {
-    const frame = document.getElementById(`player-${key}`);
+  // Mencoba mengaktifkan suara
+  function toggleSound(key) {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
 
-    if (!frame) return;
-
-    const next = !mutedPlayers[key];
-
-    frame.contentWindow?.postMessage(
-      JSON.stringify({
-        event: 'command',
-        func: next ? 'mute' : 'unMute',
-        args: []
-      }),
-      '*'
-    );
-
-    if (!next) {
-      frame.contentWindow?.postMessage(
-        JSON.stringify({
-          event: 'command',
-          func: 'playVideo',
-          args: []
-        }),
-        '*'
-      );
-    }
-
-    setMutedPlayers(prev => ({
-      ...prev,
-      [key]: next
-    }));
+    document
+      .querySelectorAll(`iframe[data-player="${key}"]`)
+      .forEach(frame => {
+        frame.contentWindow?.postMessage(
+          JSON.stringify({
+            event: 'command',
+            func: next ? 'unMute' : 'mute',
+            args: []
+          }),
+          '*'
+        );
+      });
   }
 
   function toggleChat(key) {
@@ -412,6 +376,18 @@ export default function Home() {
     }
 
     return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}`;
+  }
+
+  function statusLabel(channel) {
+    const status = channelStatus[channel.url];
+
+    if (!status) return 'MEMERIKSA';
+
+    if (status.status === 'live') return 'LIVE';
+    if (status.status === 'offline') return 'OFFLINE';
+    if (status.status === 'error') return 'ERROR';
+
+    return 'MEMERIKSA';
   }
 
   return (
@@ -446,113 +422,147 @@ export default function Home() {
           </button>
         </header>
 
-        {/* FORM TAMBAH PLAYER */}
+        {/* MSF STREAMING */}
         <section className="mb-7 rounded-3xl border border-yellow-900/50 bg-zinc-950 p-5">
 
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black text-yellow-400">
-                MSF STREAMING
-              </h2>
+          <div className="mb-5">
+            <h2 className="text-xl font-black text-yellow-400">
+              MSF STREAMING
+            </h2>
 
-              <p className="text-xs text-zinc-500">
-                {streams.length} player tersimpan
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={syncChannels}
-                disabled={syncing}
-                className="rounded-xl bg-yellow-500 px-4 py-3 text-xs font-black text-black"
-              >
-                {syncing ? 'SYNC...' : '● SYNC'}
-              </button>
-
-              <button
-                onClick={removeAll}
-                className="rounded-xl border border-red-900 px-4 py-3 text-xs text-red-400"
-              >
-                KOSONGKAN
-              </button>
-            </div>
+            <p className="mt-1 text-sm text-zinc-500">
+              {streams.length} player tersimpan
+            </p>
           </div>
 
-          {/* DAFTAR CHANNEL PERMANEN */}
-          {/* DAFTAR CHANNEL PERMANEN */}
-<div className="mb-5 overflow-hidden rounded-3xl border border-yellow-900/50 bg-zinc-950">
+          <div className="mb-6 flex flex-wrap gap-3">
+            <button
+              onClick={syncChannels}
+              disabled={syncing}
+              className="rounded-xl bg-yellow-500 px-6 py-4 font-black text-black disabled:opacity-50"
+            >
+              ● {syncing ? 'SYNC...' : 'SYNC'}
+            </button>
 
-  <button
-    onClick={() => setShowPermanent(v => !v)}
-    className="flex w-full items-center justify-between bg-zinc-900 p-5 text-left"
-  >
-    <span className="text-lg font-black tracking-wide text-yellow-400">
-      CHANNEL PERMANEN
-    </span>
+            <button
+              onClick={removeAll}
+              className="rounded-xl border border-red-900 px-6 py-4 font-bold text-red-400"
+            >
+              KOSONGKAN
+            </button>
+          </div>
 
-    <span className="text-xl text-yellow-400">
-      {showPermanent ? '⌃' : '⌄'}
-    </span>
-  </button>
+          {/* CHANNEL PERMANEN */}
+          <section className="mb-6 overflow-hidden rounded-3xl border border-yellow-900/60 bg-black">
 
-  {showPermanent && (
-    <div className="grid grid-cols-2 gap-3 p-4">
+            <button
+              onClick={() => setShowPermanent(v => !v)}
+              className="flex w-full items-center justify-between bg-zinc-900 px-5 py-8 text-left"
+            >
+              <span className="text-xl font-black text-yellow-400">
+                CHANNEL PERMANEN
+              </span>
 
-      {PERMANENT_CHANNELS.map(channel => {
-        const added = streams.find(
-          stream =>
-            stream.isChannel &&
-            stream.channelUrl === channel.url
-        );
+              <span className="text-2xl text-yellow-400">
+                {showPermanent ? '⌃' : '⌄'}
+              </span>
+            </button>
 
-        const isLive = added?.liveStatus === 'live';
+            {showPermanent && (
+              <div className="grid grid-cols-2 gap-3 p-4">
 
-        return (
-          <button
-            key={channel.url}
-            onClick={() => addPermanentChannel(channel)}
-            disabled={!!added}
-            className={`flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-4 text-left transition ${
-              isLive
-                ? 'border-red-900 bg-red-950/20 shadow-[0_0_12px_rgba(239,68,68,0.2)]'
-                : 'border-zinc-800 bg-zinc-900/70'
-            } ${added ? 'cursor-default' : 'active:scale-95'}`}
-          >
+                {PERMANENT_CHANNELS.map(channel => {
+                  const status = statusLabel(channel);
+                  const isLive = status === 'LIVE';
+                  const isError = status === 'ERROR';
 
-            {/* IKON YOUTUBE */}
-            <span className={`shrink-0 text-sm ${
-              isLive ? 'text-red-500' : 'text-zinc-700'
-            }`}>
-              ▶
-            </span>
+                  return (
+                    <button
+                      key={channel.url}
+                      onClick={() => addPermanentChannel(channel)}
+                      className={`flex min-h-[112px] min-w-0 items-center gap-3 rounded-3xl border p-4 text-left transition ${
+                        isLive
+                          ? 'border-red-800 bg-red-950/30 shadow-lg shadow-red-900/30'
+                          : 'border-zinc-800 bg-zinc-900'
+                      }`}
+                    >
+                      <span
+                        className={`shrink-0 text-xl ${
+                          isLive ? 'text-red-500' : 'text-zinc-600'
+                        }`}
+                      >
+                        ▶
+                      </span>
 
-            {/* INDIKATOR */}
-            <span className={`h-2 w-2 shrink-0 rounded-full ${
-              isLive ? 'bg-red-500' : 'bg-zinc-600'
-            }`} />
+                      <div
+                        className={`h-3 w-3 shrink-0 rounded-full ${
+                          isLive ? 'bg-red-500' : 'bg-zinc-600'
+                        }`}
+                      />
 
-            {/* NAMA CHANNEL */}
-            <span className="min-w-0 flex-1 text-left text-sm font-bold leading-tight whitespace-normal break-words">
-  {channel.name}
-</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="whitespace-normal break-words text-left text-sm font-bold leading-snug text-white">
+                          {channel.name}
+                        </p>
 
-            {/* STATUS */}
-            <span className="shrink-0 text-xs font-bold">
-  {channel.status}
-</span>
+                        <p
+                          className={`mt-2 text-[10px] font-black ${
+                            isLive
+                              ? 'text-red-400'
+                              : isError
+                                ? 'text-orange-400'
+                                : 'text-zinc-500'
+                          }`}
+                        >
+                          {status}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
 
-          </button>
-        );
-      })}
+              </div>
+            )}
+          </section>
 
-    </div>
-  )}
+          {/* TAMBAH PLAYER */}
+          <form onSubmit={addStream} className="grid gap-3">
 
-</div>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Nama Siaran"
+              maxLength={60}
+              className="w-full rounded-2xl border border-zinc-700 bg-black p-5 outline-none focus:border-yellow-500"
+            />
+
+            <input
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              placeholder="URL Channel YouTube / Video / TikTok"
+              type="url"
+              required
+              className="w-full rounded-2xl border border-zinc-700 bg-black p-5 outline-none focus:border-yellow-500"
+            />
+
+            {error && (
+              <p className="rounded-xl bg-red-950/40 p-3 text-sm text-red-400">
+                {error}
+              </p>
+            )}
+
+            <button
+              disabled={syncing}
+              className="rounded-2xl bg-yellow-500 p-5 font-black tracking-wider text-black disabled:opacity-50"
+            >
+              {syncing ? 'MEMERIKSA...' : '+ TAMBAH LINK'}
+            </button>
+
+          </form>
 
           {/* PENGATURAN */}
           {showSettings && (
-            <div className="mb-5 rounded-xl border border-zinc-800 p-4">
+            <div className="mt-5 rounded-2xl border border-zinc-800 p-4">
               <label className="text-sm text-zinc-400">
                 Jumlah kolom player
               </label>
@@ -569,43 +579,9 @@ export default function Home() {
             </div>
           )}
 
-          {/* FORM */}
-          <form onSubmit={addStream} className="grid gap-3">
-
-            <input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Nama Siaran"
-              maxLength={60}
-              className="w-full rounded-xl border border-zinc-700 bg-black p-4 outline-none focus:border-yellow-500"
-            />
-
-            <input
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="URL Channel YouTube / Video / TikTok"
-              type="url"
-              required
-              className="w-full rounded-xl border border-zinc-700 bg-black p-4 outline-none focus:border-yellow-500"
-            />
-
-            {error && (
-              <p className="text-sm text-red-400">
-                {error}
-              </p>
-            )}
-
-            <button
-              disabled={syncing}
-              className="rounded-xl bg-yellow-500 p-4 font-black tracking-wider text-black disabled:opacity-50"
-            >
-              {syncing ? 'MEMERIKSA...' : '+ TAMBAH LINK'}
-            </button>
-
-          </form>
         </section>
 
-        {/* JUDUL MULTIVIEW */}
+        {/* PLAYER */}
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-black text-yellow-400">
             LIVE MULTIVIEW
@@ -616,97 +592,80 @@ export default function Home() {
           </span>
         </div>
 
-        {/* GRID PLAYER */}
         <div
-          className="grid gap-6"
+          className="grid gap-5"
           style={{
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
           }}
         >
+          {streams.map(stream => (
+            <article
+              key={stream.key}
+              className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950"
+            >
 
-          {streams.map(stream => {
-            const isMuted = !!mutedPlayers[stream.key];
+              {/* PLAYER HEADER */}
+              <div className="flex items-center gap-2 border-b border-zinc-800 p-3">
 
-            return (
-              <article
-                key={stream.key}
-                className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950"
-              >
+                <span className="min-w-0 flex-1 truncate font-bold">
+                  {stream.name}
+                </span>
 
-                {/* HEADER PLAYER */}
-                <div className="flex items-center gap-2 border-b border-zinc-800 p-3">
+                <button
+                  onClick={() => toggleSound(stream.key)}
+                  className="rounded-lg border border-yellow-800 px-3 py-2 text-sm text-yellow-400"
+                >
+                  {soundEnabled ? '🔊' : '🔇'}
+                </button>
 
-                  <span className="min-w-0 flex-1 truncate font-bold">
-                    {stream.name}
-                  </span>
+                <button
+                  onClick={() => toggleChat(stream.key)}
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    chatOpen[stream.key]
+                      ? 'border-yellow-500 bg-yellow-500 text-black'
+                      : 'border-zinc-700 text-yellow-400'
+                  }`}
+                >
+                  ▢
+                </button>
 
-                  {stream.platform === 'YouTube' && stream.id && (
-                    <>
-                      <button
-                        onClick={() => togglePlayerSound(stream.key)}
-                        title={isMuted ? 'Aktifkan suara' : 'Matikan suara'}
-                        className="rounded-lg border border-yellow-800 px-3 py-2 text-yellow-400"
-                      >
-                        {isMuted ? '🔇' : '🔊'}
-                      </button>
+                <button
+                  onClick={() => removeOne(stream.key)}
+                  className="rounded-lg border border-red-900 px-3 py-2 text-red-400"
+                >
+                  ✕
+                </button>
 
-                      <button
-                        onClick={() => toggleChat(stream.key)}
-                        title="Live Chat"
-                        className={`rounded-lg border px-3 py-2 ${
-                          chatOpen[stream.key]
-                            ? 'border-yellow-500 bg-yellow-500 text-black'
-                            : 'border-yellow-800 text-yellow-400'
-                        }`}
-                      >
-                        ▢
-                      </button>
-                    </>
-                  )}
+              </div>
 
-                  <button
-                    onClick={() => removeOne(stream.key)}
-                    title="Hapus player"
-                    className="rounded-lg border border-red-900 px-3 py-2 text-red-400"
-                  >
-                    ✕
-                  </button>
+              {/* VIDEO */}
+              <div className="relative aspect-video bg-black">
 
-                </div>
+                {stream.embed ? (
+                  <iframe
+                    key={`${stream.key}-${stream.id}`}
+                    data-player={stream.key}
+                    src={stream.embed}
+                    title={stream.name}
+                    className="h-full w-full"
+                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    allowFullScreen
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+                    {stream.isChannel
+                      ? 'Channel belum LIVE.'
+                      : 'Player tidak tersedia.'}
+                  </div>
+                )}
 
-                {/* VIDEO PLAYER */}
-                <div className="relative aspect-video bg-black">
-
-                  {stream.embed ? (
-                    <iframe
-                      id={`player-${stream.key}`}
-                      key={`${stream.key}-${stream.id}`}
-                      src={stream.embed}
-                      title={stream.name}
-                      className="h-full w-full"
-                      allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                      allowFullScreen
-                      loading="eager"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-zinc-500">
-                      {stream.isChannel
-                        ? stream.liveStatus === 'checking'
-                          ? 'Memeriksa siaran...'
-                          : 'Channel belum LIVE.'
-                        : 'Player tidak tersedia.'}
-                    </div>
-                  )}
-
-                  {/* CHAT BUBBLE */}
-                  {chatOpen[stream.key] &&
-                    stream.platform === 'YouTube' &&
-                    stream.id && (
-
-                    <div className="absolute bottom-3 left-3 right-3 z-10 h-[65%] overflow-hidden rounded-2xl border border-yellow-500/70 bg-black/90 shadow-xl">
+                {/* CHAT BUBBLE */}
+                {chatOpen[stream.key] &&
+                  stream.platform === 'YouTube' &&
+                  stream.id && (
+                    <div className="absolute bottom-3 left-3 right-3 z-10 h-[65%] overflow-hidden rounded-2xl border border-yellow-500/70 bg-black shadow-xl">
 
                       <div className="flex items-center justify-between bg-zinc-900 px-3 py-2">
-
                         <span className="text-xs font-bold text-yellow-400">
                           MSF LIVE CHAT
                         </span>
@@ -717,36 +676,32 @@ export default function Home() {
                         >
                           TUTUP ✕
                         </button>
-
                       </div>
 
                       <iframe
                         src={chatUrl(stream)}
-                        title="Live Chat Bubble"
+                        title="Live Chat"
                         className="h-[calc(100%-36px)] w-full"
                       />
 
                     </div>
                   )}
 
-                </div>
+              </div>
 
-                {/* INFORMASI PLAYER */}
-                <div className="p-3">
-                  <span className="block truncate text-xs text-zinc-500">
-                    {stream.liveTitle || stream.originalUrl}
-                  </span>
-                </div>
+              {/* PLAYER FOOTER */}
+              <div className="p-3">
+                <p className="truncate text-xs text-zinc-500">
+                  {stream.liveTitle || stream.originalUrl}
+                </p>
+              </div>
 
-              </article>
-            );
-          })}
-
+            </article>
+          ))}
         </div>
 
         {/* FOOTER */}
         <footer className="mt-12 border-t border-yellow-900/40 py-6 text-center">
-
           <p className="font-black tracking-[.3em] text-yellow-500">
             MSF MULTIVIEW
           </p>
@@ -754,7 +709,6 @@ export default function Home() {
           <p className="mt-2 text-xs text-zinc-600">
             BLACK & YELLOW EDITION
           </p>
-
         </footer>
 
       </div>

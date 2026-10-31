@@ -415,7 +415,7 @@ export default function Home() {
     return '';
   }
 
-  return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}`;
+  return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}&dark_theme=1`;
 }
 
   // STATUS CHANNEL
@@ -803,13 +803,13 @@ export default function Home() {
       </div>
 
       <iframe
-        key={`chat-${stream.id}`}
-        src={chatUrl(stream)}
-        title="MSF Live Chat"
-        className="block h-[320px] w-full border-0 bg-black"
-        allow="autoplay"
-        loading="lazy"
-      />
+  key={`chat-${stream.id}`}
+  src={chatUrl(stream)}
+  title="MSF Live Chat"
+  className="block h-[320px] w-full border-0"
+  allow="autoplay"
+  loading="eager"
+/>
 
     </div>
   )}

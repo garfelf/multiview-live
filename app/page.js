@@ -411,15 +411,12 @@ export default function Home() {
 
   // URL LIVE CHAT YOUTUBE
   function chatUrl(stream) {
-    if (
-      !stream.id ||
-      typeof window === 'undefined'
-    ) {
-      return '';
-    }
-
-    return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}`;
+  if (!stream.id || typeof window === 'undefined') {
+    return '';
   }
+
+  return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}`;
+}
 
   // STATUS CHANNEL
   function statusLabel(channel) {
@@ -786,43 +783,36 @@ export default function Home() {
 
               </div>
 
-              {/* LIVE CHAT EMBED DI BAWAH VIDEO */}
-              {chatOpen[stream.key] &&
-                stream.platform === 'YouTube' &&
-                stream.id && (
+              {/* LIVE CHAT EMBED */}
+{chatOpen[stream.key] &&
+  stream.platform === 'YouTube' &&
+  stream.id && (
+    <div className="mt-3 overflow-hidden rounded-2xl border border-yellow-500/60 bg-zinc-950">
 
-                  <div className="border-t border-yellow-900/50 bg-black">
+      <div className="flex items-center justify-between bg-zinc-900 px-4 py-3">
+        <span className="text-sm font-bold text-yellow-400">
+          MSF LIVE CHAT
+        </span>
 
-                    <div className="flex items-center justify-between bg-zinc-900 px-4 py-3">
+        <button
+          onClick={() => toggleChat(stream.key)}
+          className="rounded-lg border border-red-900 px-3 py-2 text-sm font-bold text-red-400"
+        >
+          TUTUP ✕
+        </button>
+      </div>
 
-                      <span className="text-sm font-black text-yellow-400">
-                        MSF LIVE CHAT
-                      </span>
+      <iframe
+        key={`chat-${stream.id}`}
+        src={chatUrl(stream)}
+        title="MSF Live Chat"
+        className="block h-[320px] w-full border-0 bg-black"
+        allow="autoplay"
+        loading="lazy"
+      />
 
-                      <button
-                        onClick={() => toggleChat(stream.key)}
-                        className="rounded-lg border border-red-900 px-3 py-2 text-sm text-red-400"
-                      >
-                        TUTUP ✕
-                      </button>
-
-                    </div>
-
-                    <div className="h-[450px] w-full bg-black">
-
-                      <iframe
-                        key={`chat-${stream.key}-${stream.id}`}
-                        src={chatUrl(stream)}
-                        title={`Live Chat ${stream.name}`}
-                        className="h-full w-full border-0"
-                        allow="autoplay"
-                      />
-
-                    </div>
-
-                  </div>
-
-                )}
+    </div>
+  )}
 
               {/* PLAYER FOOTER */}
               <div className="p-3">

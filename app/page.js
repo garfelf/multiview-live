@@ -469,60 +469,65 @@ export default function Home() {
             </button>
 
             {showPermanent && (
-              <div className="grid grid-cols-2 gap-3 p-4">
+  <div className="grid grid-cols-2 gap-3 p-4">
 
-                {PERMANENT_CHANNELS.map(channel => {
-                  const status = statusLabel(channel);
-                  const isLive = status === 'LIVE';
-                  const isError = status === 'ERROR';
+    {PERMANENT_CHANNELS.map(channel => {
+      const status = statusLabel(channel);
+      const isLive = status === 'LIVE';
+      const isError = status === 'ERROR';
 
-                  return (
-                    <button
-                      key={channel.url}
-                      onClick={() => addPermanentChannel(channel)}
-                      className={`flex min-h-[112px] min-w-0 items-center gap-3 rounded-3xl border p-4 text-left transition ${
-                        isLive
-                          ? 'border-red-800 bg-red-950/30 shadow-lg shadow-red-900/30'
-                          : 'border-zinc-800 bg-zinc-900'
-                      }`}
-                    >
-                      <span
-                        className={`shrink-0 text-xl ${
-                          isLive ? 'text-red-500' : 'text-zinc-600'
-                        }`}
-                      >
-                        ▶
-                      </span>
+      return (
+        <button
+          key={channel.url}
+          onClick={() => addPermanentChannel(channel)}
+          className={`grid min-h-[100px] min-w-0 grid-cols-[14px_9px_minmax(0,1fr)] items-center gap-2 rounded-2xl border p-3 text-left transition ${
+            isLive
+              ? 'border-red-800 bg-red-950/30 shadow-lg shadow-red-900/30'
+              : 'border-zinc-800 bg-zinc-900'
+          }`}
+        >
 
-                      <div
-                        className={`h-3 w-3 shrink-0 rounded-full ${
-                          isLive ? 'bg-red-500' : 'bg-zinc-600'
-                        }`}
-                      />
+          {/* IKON PLAY KECIL */}
+          <span
+            className={`text-xs ${
+              isLive ? 'text-red-500' : 'text-zinc-600'
+            }`}
+          >
+            ▶
+          </span>
 
-                      <div className="min-w-0 flex-1">
-                        <p className="whitespace-normal break-words text-left text-sm font-bold leading-snug text-white">
-                          {channel.name}
-                        </p>
+          {/* TITIK STATUS KECIL */}
+          <span
+            className={`h-2 w-2 rounded-full ${
+              isLive ? 'bg-red-500' : 'bg-zinc-600'
+            }`}
+          />
 
-                        <p
-                          className={`mt-2 text-[10px] font-black ${
-                            isLive
-                              ? 'text-red-400'
-                              : isError
-                                ? 'text-orange-400'
-                                : 'text-zinc-500'
-                          }`}
-                        >
-                          {status}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
+          {/* NAMA DAN STATUS CHANNEL */}
+          <div className="min-w-0">
+            <p className="text-sm font-bold leading-snug text-white [overflow-wrap:normal]">
+              {channel.name}
+            </p>
 
-              </div>
-            )}
+            <p
+              className={`mt-2 text-[10px] font-black ${
+                isLive
+                  ? 'text-red-400'
+                  : isError
+                    ? 'text-orange-400'
+                    : 'text-zinc-500'
+              }`}
+            >
+              {status}
+            </p>
+          </div>
+
+        </button>
+      );
+    })}
+
+  </div>
+)}
           </section>
 
           {/* TAMBAH PLAYER */}
@@ -711,7 +716,4 @@ export default function Home() {
           </p>
         </footer>
 
-      </div>
-    </main>
-  );
-}
+    

@@ -55,7 +55,9 @@ function identifyUrl(raw) {
   if (host === 'youtu.be') {
     const id = url.pathname.split('/').filter(Boolean)[0];
 
-    if (!id) throw new Error('ID video tidak ditemukan.');
+    if (!id) {
+      throw new Error('ID video tidak ditemukan.');
+    }
 
     return {
       platform: 'YouTube',
@@ -64,12 +66,19 @@ function identifyUrl(raw) {
     };
   }
 
-  if (host === 'youtube.com' || host === 'm.youtube.com') {
+  if (
+    host === 'youtube.com' ||
+    host === 'm.youtube.com'
+  ) {
     const id =
       url.searchParams.get('v') ||
-      (url.pathname.match(/\/(?:live|embed|shorts)\/([^/?]+)/) || [])[1];
+      (url.pathname.match(
+        /\/(?:live|embed|shorts)\/([^/?]+)/
+      ) || [])[1];
 
-    if (!id) throw new Error('URL video YouTube tidak valid.');
+    if (!id) {
+      throw new Error('URL video YouTube tidak valid.');
+    }
 
     return {
       platform: 'YouTube',
@@ -108,7 +117,9 @@ async function checkChannel(channelUrl) {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || 'Gagal memeriksa channel.');
+    throw new Error(
+      data.error || 'Gagal memeriksa channel.'
+    );
   }
 
   return data;
@@ -128,10 +139,11 @@ export default function Home() {
   const [showPermanent, setShowPermanent] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [storageLoaded, setStorageLoaded] = useState(false);
 
   streamsRef.current = streams;
 
-  // Memuat player tersimpan
+  // MEMUAT PLAYER TERSIMPAN
   useEffect(() => {
     try {
       const saved = JSON.parse(
@@ -144,14 +156,21 @@ export default function Home() {
     } catch {
       setStreams([]);
     }
+
+    setStorageLoaded(true);
   }, []);
 
-  // Menyimpan player
+  // MENYIMPAN PLAYER
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(streams));
-  }, [streams]);
+    if (!storageLoaded) return;
 
-  // Memeriksa semua channel permanen
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(streams)
+    );
+  }, [streams, storageLoaded]);
+
+  // MEMERIKSA CHANNEL PERMANEN
   async function syncPermanentChannels() {
     setSyncing(true);
 
@@ -185,12 +204,10 @@ export default function Home() {
     });
 
     setChannelStatus(updated);
-
     setSyncing(false);
   }
 
-  // Pemeriksaan awal dan berkala.
-  // Interval 15 menit digunakan untuk menghemat kuota YouTube API.
+  // PEMERIKSAAN AWAL DAN BERKALA
   useEffect(() => {
     syncPermanentChannels();
 
@@ -201,7 +218,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Memeriksa channel tambahan
+  // MEMERIKSA CHANNEL TAMBAHAN
   async function syncChannels() {
     setSyncing(true);
     setError('');
@@ -212,7 +229,9 @@ export default function Home() {
 
     for (const stream of channels) {
       try {
-        const data = await checkChannel(stream.channelUrl);
+        const data = await checkChannel(
+          stream.channelUrl
+        );
 
         setStreams(current =>
           current.map(item => {
@@ -246,7 +265,7 @@ export default function Home() {
     setSyncing(false);
   }
 
-  // Klik channel permanen
+  // MENAMBAHKAN CHANNEL PERMANEN
   function addPermanentChannel(channel) {
     const status = channelStatus[channel.url];
 
@@ -256,7 +275,9 @@ export default function Home() {
     }
 
     if (status.status === 'error') {
-      setError(status.message || 'Gagal memeriksa channel.');
+      setError(
+        status.message || 'Gagal memeriksa channel.'
+      );
       return;
     }
 
@@ -290,7 +311,7 @@ export default function Home() {
     setError('');
   }
 
-  // Tambah link pribadi
+  // MENAMBAHKAN LINK PRIBADI
   async function addStream(e) {
     e.preventDefault();
     setError('');
@@ -301,15 +322,21 @@ export default function Home() {
       const item = {
         ...parsed,
         key: `${Date.now()}-${Math.random()}`,
-        name: name.trim() || `MSF ${streamsRef.current.length + 1}`,
+        name:
+          name.trim() ||
+          `MSF ${streamsRef.current.length + 1}`,
         originalUrl: url.trim(),
-        liveStatus: parsed.isChannel ? 'checking' : 'live'
+        liveStatus: parsed.isChannel
+          ? 'checking'
+          : 'live'
       };
 
       if (parsed.isChannel) {
         setSyncing(true);
 
-        const data = await checkChannel(parsed.channelUrl);
+        const data = await checkChannel(
+          parsed.channelUrl
+        );
 
         if (data.live) {
           item.id = data.videoId;
@@ -333,10 +360,20 @@ export default function Home() {
     setSyncing(false);
   }
 
+  // MENGHAPUS SATU PLAYER
   function removeOne(key) {
-    setStreams(prev => prev.filter(item => item.key !== key));
+    setStreams(prev =>
+      prev.filter(item => item.key !== key)
+    );
+
+    setChatOpen(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
   }
 
+  // MENGHAPUS SEMUA PLAYER
   function removeAll() {
     if (confirm('Kosongkan semua player?')) {
       setStreams([]);
@@ -344,9 +381,10 @@ export default function Home() {
     }
   }
 
-  // Mencoba mengaktifkan suara
+  // MENGATUR SUARA PLAYER
   function toggleSound(key) {
     const next = !soundEnabled;
+
     setSoundEnabled(next);
 
     document
@@ -363,6 +401,7 @@ export default function Home() {
       });
   }
 
+  // MEMBUKA / MENUTUP LIVE CHAT
   function toggleChat(key) {
     setChatOpen(prev => ({
       ...prev,
@@ -370,14 +409,19 @@ export default function Home() {
     }));
   }
 
+  // URL LIVE CHAT YOUTUBE
   function chatUrl(stream) {
-  if (!stream.id || typeof window === 'undefined') {
-    return '';
+    if (
+      !stream.id ||
+      typeof window === 'undefined'
+    ) {
+      return '';
+    }
+
+    return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}`;
   }
 
-  return `https://www.youtube.com/live_chat?is_popout=1&v=${stream.id}&embed_domain=${window.location.hostname}`;
-}
-
+  // STATUS CHANNEL
   function statusLabel(channel) {
     const status = channelStatus[channel.url];
 
@@ -392,11 +436,14 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-black px-4 py-5 text-white sm:px-7">
+
       <div className="mx-auto max-w-6xl">
 
         {/* HEADER */}
         <header className="mb-8 flex items-center justify-between border-b border-yellow-900/50 pb-5">
+
           <div className="flex items-center gap-3">
+
             <img
               src="/msf-logo.webp"
               alt="MSF"
@@ -412,6 +459,7 @@ export default function Home() {
                 MULTIVIEW LIVE
               </p>
             </div>
+
           </div>
 
           <button
@@ -420,12 +468,14 @@ export default function Home() {
           >
             ⚙ PENGATURAN
           </button>
+
         </header>
 
         {/* MSF STREAMING */}
         <section className="mb-7 rounded-3xl border border-yellow-900/50 bg-zinc-950 p-5">
 
           <div className="mb-5">
+
             <h2 className="text-xl font-black text-yellow-400">
               MSF STREAMING
             </h2>
@@ -433,9 +483,12 @@ export default function Home() {
             <p className="mt-1 text-sm text-zinc-500">
               {streams.length} player tersimpan
             </p>
+
           </div>
 
+          {/* TOMBOL SYNC DAN KOSONGKAN */}
           <div className="mb-6 flex flex-wrap gap-3">
+
             <button
               onClick={syncChannels}
               disabled={syncing}
@@ -450,6 +503,7 @@ export default function Home() {
             >
               KOSONGKAN
             </button>
+
           </div>
 
           {/* CHANNEL PERMANEN */}
@@ -459,6 +513,7 @@ export default function Home() {
               onClick={() => setShowPermanent(v => !v)}
               className="flex w-full items-center justify-between bg-zinc-900 px-5 py-8 text-left"
             >
+
               <span className="text-xl font-black text-yellow-400">
                 CHANNEL PERMANEN
               </span>
@@ -466,72 +521,84 @@ export default function Home() {
               <span className="text-2xl text-yellow-400">
                 {showPermanent ? '⌃' : '⌄'}
               </span>
+
             </button>
 
             {showPermanent && (
-  <div className="grid grid-cols-2 gap-3 p-4">
 
-    {PERMANENT_CHANNELS.map(channel => {
-      const status = statusLabel(channel);
-      const isLive = status === 'LIVE';
-      const isError = status === 'ERROR';
+              <div className="grid grid-cols-2 gap-3 p-4">
 
-      return (
-        <button
-          key={channel.url}
-          onClick={() => addPermanentChannel(channel)}
-          className={`grid min-h-[100px] min-w-0 grid-cols-[14px_9px_minmax(0,1fr)] items-center gap-2 rounded-2xl border p-3 text-left transition ${
-            isLive
-              ? 'border-red-800 bg-red-950/30 shadow-lg shadow-red-900/30'
-              : 'border-zinc-800 bg-zinc-900'
-          }`}
-        >
+                {PERMANENT_CHANNELS.map(channel => {
+                  const status = statusLabel(channel);
+                  const isLive = status === 'LIVE';
+                  const isError = status === 'ERROR';
 
-          {/* IKON PLAY KECIL */}
-          <span
-            className={`text-xs ${
-              isLive ? 'text-red-500' : 'text-zinc-600'
-            }`}
-          >
-            ▶
-          </span>
+                  return (
 
-          {/* TITIK STATUS KECIL */}
-          <span
-            className={`h-2 w-2 rounded-full ${
-              isLive ? 'bg-red-500' : 'bg-zinc-600'
-            }`}
-          />
+                    <button
+                      key={channel.url}
+                      onClick={() => addPermanentChannel(channel)}
+                      className={`grid min-h-[100px] min-w-0 grid-cols-[14px_9px_minmax(0,1fr)] items-center gap-2 rounded-2xl border p-3 text-left transition ${
+                        isLive
+                          ? 'border-red-800 bg-red-950/30 shadow-lg shadow-red-900/30'
+                          : 'border-zinc-800 bg-zinc-900'
+                      }`}
+                    >
 
-          {/* NAMA DAN STATUS CHANNEL */}
-          <div className="min-w-0">
-            <p className="text-sm font-bold leading-snug text-white [overflow-wrap:normal]">
-              {channel.name}
-            </p>
+                      <span
+                        className={`text-xs ${
+                          isLive
+                            ? 'text-red-500'
+                            : 'text-zinc-600'
+                        }`}
+                      >
+                        ▶
+                      </span>
 
-            <p
-              className={`mt-2 text-[10px] font-black ${
-                isLive
-                  ? 'text-red-400'
-                  : isError
-                    ? 'text-orange-400'
-                    : 'text-zinc-500'
-              }`}
-            >
-              {status}
-            </p>
-          </div>
+                      <span
+                        className={`h-2 w-2 rounded-full ${
+                          isLive
+                            ? 'bg-red-500'
+                            : 'bg-zinc-600'
+                        }`}
+                      />
 
-        </button>
-      );
-    })}
+                      <div className="min-w-0">
 
-  </div>
-)}
+                        <p className="text-sm font-bold leading-snug text-white [overflow-wrap:normal]">
+                          {channel.name}
+                        </p>
+
+                        <p
+                          className={`mt-2 text-[10px] font-black ${
+                            isLive
+                              ? 'text-red-400'
+                              : isError
+                                ? 'text-orange-400'
+                                : 'text-zinc-500'
+                          }`}
+                        >
+                          {status}
+                        </p>
+
+                      </div>
+
+                    </button>
+
+                  );
+                })}
+
+              </div>
+
+            )}
+
           </section>
 
           {/* TAMBAH PLAYER */}
-          <form onSubmit={addStream} className="grid gap-3">
+          <form
+            onSubmit={addStream}
+            className="grid gap-3"
+          >
 
             <input
               value={name}
@@ -551,23 +618,29 @@ export default function Home() {
             />
 
             {error && (
+
               <p className="rounded-xl bg-red-950/40 p-3 text-sm text-red-400">
                 {error}
               </p>
+
             )}
 
             <button
               disabled={syncing}
               className="rounded-2xl bg-yellow-500 p-5 font-black tracking-wider text-black disabled:opacity-50"
             >
-              {syncing ? 'MEMERIKSA...' : '+ TAMBAH LINK'}
+              {syncing
+                ? 'MEMERIKSA...'
+                : '+ TAMBAH LINK'}
             </button>
 
           </form>
 
           {/* PENGATURAN */}
           {showSettings && (
+
             <div className="mt-5 rounded-2xl border border-zinc-800 p-4">
+
               <label className="text-sm text-zinc-400">
                 Jumlah kolom player
               </label>
@@ -577,17 +650,22 @@ export default function Home() {
                 onChange={e => setColumns(e.target.value)}
                 className="mt-2 w-full rounded-xl border border-zinc-700 bg-black p-3"
               >
+
                 <option value="1">1 kolom</option>
                 <option value="2">2 kolom</option>
                 <option value="3">3 kolom</option>
+
               </select>
+
             </div>
+
           )}
 
         </section>
 
-        {/* PLAYER */}
+        {/* JUDUL LIVE MULTIVIEW */}
         <div className="mb-5 flex items-center justify-between">
+
           <h2 className="text-xl font-black text-yellow-400">
             LIVE MULTIVIEW
           </h2>
@@ -595,15 +673,19 @@ export default function Home() {
           <span className="text-xs text-zinc-500">
             {streams.length} PLAYER
           </span>
+
         </div>
 
+        {/* DAFTAR PLAYER */}
         <div
           className="grid gap-5"
           style={{
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`
           }}
         >
+
           {streams.map(stream => (
+
             <article
               key={stream.key}
               className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950"
@@ -616,37 +698,70 @@ export default function Home() {
                   {stream.name}
                 </span>
 
+                {/* TOMBOL SUARA */}
                 <button
                   onClick={() => toggleSound(stream.key)}
-                  className="rounded-lg border border-yellow-800 px-3 py-2 text-sm text-yellow-400"
+                  aria-label="Suara"
+                  title="Suara"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-yellow-800 text-yellow-400"
                 >
+
                   {soundEnabled ? '🔊' : '🔇'}
+
                 </button>
 
+                {/* TOMBOL LIVE CHAT */}
                 <button
                   onClick={() => toggleChat(stream.key)}
-                  className={`rounded-lg border px-3 py-2 text-sm ${
+                  aria-label={
+                    chatOpen[stream.key]
+                      ? 'Tutup Live Chat'
+                      : 'Buka Live Chat'
+                  }
+                  title="Live Chat"
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition ${
                     chatOpen[stream.key]
                       ? 'border-yellow-500 bg-yellow-500 text-black'
-                      : 'border-zinc-700 text-yellow-400'
+                      : 'border-yellow-800 text-yellow-400'
                   }`}
                 >
-                  ▢
+
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-6 w-6"
+                  >
+
+                    <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3h.5a8.5 8.5 0 0 1 8 8v.5Z" />
+
+                    <path d="M8 10h8M8 14h5" />
+
+                  </svg>
+
                 </button>
 
+                {/* TOMBOL HAPUS */}
                 <button
                   onClick={() => removeOne(stream.key)}
-                  className="rounded-lg border border-red-900 px-3 py-2 text-red-400"
+                  aria-label="Hapus player"
+                  title="Hapus player"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-red-900 text-lg text-red-400"
                 >
                   ✕
                 </button>
 
               </div>
 
-              {/* VIDEO */}
+              {/* VIDEO PLAYER */}
               <div className="relative aspect-video bg-black">
 
                 {stream.embed ? (
+
                   <iframe
                     key={`${stream.key}-${stream.id}`}
                     data-player={stream.key}
@@ -656,58 +771,77 @@ export default function Home() {
                     allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                     allowFullScreen
                   />
+
                 ) : (
+
                   <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+
                     {stream.isChannel
                       ? 'Channel belum LIVE.'
                       : 'Player tidak tersedia.'}
+
                   </div>
+
                 )}
 
-                {/* CHAT BUBBLE */}
-                {chatOpen[stream.key] &&
-                  stream.platform === 'YouTube' &&
-                  stream.id && (
-                    <div className="absolute inset-2 z-10 flex flex-col overflow-hidden rounded-2xl border border-yellow-500/70 bg-black shadow-xl">
+              </div>
 
-                      <div className="flex items-center justify-between bg-zinc-900 px-3 py-2">
-                        <span className="text-xs font-bold text-yellow-400">
-                          MSF LIVE CHAT
-                        </span>
+              {/* LIVE CHAT EMBED DI BAWAH VIDEO */}
+              {chatOpen[stream.key] &&
+                stream.platform === 'YouTube' &&
+                stream.id && (
 
-                        <button
-                          onClick={() => toggleChat(stream.key)}
-                          className="text-xs text-white"
-                        >
-                          TUTUP ✕
-                        </button>
-                      </div>
+                  <div className="border-t border-yellow-900/50 bg-black">
 
-                      <iframe
-  src={chatUrl(stream)}
-  title="MSF Live Chat"
-  className="min-h-0 w-full flex-1 border-0"
-  allow="autoplay"
-/>
+                    <div className="flex items-center justify-between bg-zinc-900 px-4 py-3">
+
+                      <span className="text-sm font-black text-yellow-400">
+                        MSF LIVE CHAT
+                      </span>
+
+                      <button
+                        onClick={() => toggleChat(stream.key)}
+                        className="rounded-lg border border-red-900 px-3 py-2 text-sm text-red-400"
+                      >
+                        TUTUP ✕
+                      </button>
 
                     </div>
-                  )}
 
-              </div>
+                    <div className="h-[450px] w-full bg-black">
+
+                      <iframe
+                        key={`chat-${stream.key}-${stream.id}`}
+                        src={chatUrl(stream)}
+                        title={`Live Chat ${stream.name}`}
+                        className="h-full w-full border-0"
+                        allow="autoplay"
+                      />
+
+                    </div>
+
+                  </div>
+
+                )}
 
               {/* PLAYER FOOTER */}
               <div className="p-3">
+
                 <p className="truncate text-xs text-zinc-500">
                   {stream.liveTitle || stream.originalUrl}
                 </p>
+
               </div>
 
             </article>
+
           ))}
+
         </div>
 
         {/* FOOTER */}
         <footer className="mt-12 border-t border-yellow-900/40 py-6 text-center">
+
           <p className="font-black tracking-[.3em] text-yellow-500">
             MSF MULTIVIEW
           </p>
@@ -715,9 +849,11 @@ export default function Home() {
           <p className="mt-2 text-xs text-zinc-600">
             BLACK & YELLOW EDITION
           </p>
-                </footer>
+
+        </footer>
 
       </div>
+
     </main>
   );
 }

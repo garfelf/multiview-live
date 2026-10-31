@@ -522,72 +522,65 @@ export default function Home() {
             </button>
 
             {showPermanent && (
+  <div className="grid grid-cols-2 gap-3 p-4">
 
-              <div className="grid grid-cols-2 gap-3 p-4">
+    {PERMANENT_CHANNELS.map(channel => {
+      const status = statusLabel(channel);
+      const isLive = status === 'LIVE';
+      const isError = status === 'ERROR';
 
-                {PERMANENT_CHANNELS.map(channel => {
-                  const status = statusLabel(channel);
-                  const isLive = status === 'LIVE';
-                  const isError = status === 'ERROR';
+      return (
+        <button
+          key={channel.url}
+          onClick={() => addPermanentChannel(channel)}
+          className={`flex min-h-[100px] min-w-0 items-center gap-2 rounded-2xl border p-3 text-left ${
+            isLive
+              ? 'border-red-800 bg-red-950/30 shadow-lg shadow-red-900/30'
+              : 'border-zinc-800 bg-zinc-900'
+          }`}
+        >
 
-                  return (
+          {/* IKON PLAY */}
+          <span
+            className={`shrink-0 text-sm ${
+              isLive ? 'text-red-500' : 'text-zinc-600'
+            }`}
+          >
+            ▶
+          </span>
 
-                    <button
-                      key={channel.url}
-                      onClick={() => addPermanentChannel(channel)}
-                      className={`grid min-h-[100px] min-w-0 grid-cols-[14px_9px_minmax(0,1fr)] items-center gap-2 rounded-2xl border p-3 text-left transition ${
-                        isLive
-                          ? 'border-red-800 bg-red-950/30 shadow-lg shadow-red-900/30'
-                          : 'border-zinc-800 bg-zinc-900'
-                      }`}
-                    >
+          {/* TITIK STATUS */}
+          <span
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+              isLive ? 'bg-red-500' : 'bg-zinc-600'
+            }`}
+          />
 
-                      <span
-                        className={`text-xs ${
-                          isLive
-                            ? 'text-red-500'
-                            : 'text-zinc-600'
-                        }`}
-                      >
-                        ▶
-                      </span>
+          {/* NAMA CHANNEL */}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <p className="break-words text-[13px] font-bold leading-tight text-white [overflow-wrap:anywhere]">
+              {channel.name}
+            </p>
 
-                      <span
-                        className={`h-2 w-2 rounded-full ${
-                          isLive
-                            ? 'bg-red-500'
-                            : 'bg-zinc-600'
-                        }`}
-                      />
+            <p
+              className={`mt-2 text-[10px] font-black ${
+                isLive
+                  ? 'text-red-400'
+                  : isError
+                    ? 'text-orange-400'
+                    : 'text-zinc-500'
+              }`}
+            >
+              {status}
+            </p>
+          </div>
 
-                      <div className="min-w-0">
+        </button>
+      );
+    })}
 
-                        <p className="text-sm font-bold leading-snug text-white [overflow-wrap:normal]">
-                          {channel.name}
-                        </p>
-
-                        <p
-                          className={`mt-2 text-[10px] font-black ${
-                            isLive
-                              ? 'text-red-400'
-                              : isError
-                                ? 'text-orange-400'
-                                : 'text-zinc-500'
-                          }`}
-                        >
-                          {status}
-                        </p>
-
-                      </div>
-
-                    </button>
-
-                  );
-                })}
-
-              </div>
-
-            )}
+  </div>
+)}
 
           </section>
 

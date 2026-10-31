@@ -371,12 +371,12 @@ export default function Home() {
   }
 
   function chatUrl(stream) {
-    if (!stream.id || typeof window === 'undefined') {
-      return '';
-    }
-
-    return `https://www.youtube.com/live_chat?v=${stream.id}&embed_domain=${window.location.hostname}`;
+  if (!stream.id || typeof window === 'undefined') {
+    return '';
   }
+
+  return `https://www.youtube.com/live_chat?is_popout=1&v=${stream.id}&embed_domain=${window.location.hostname}`;
+}
 
   function statusLabel(channel) {
     const status = channelStatus[channel.url];
@@ -668,7 +668,7 @@ export default function Home() {
                 {chatOpen[stream.key] &&
                   stream.platform === 'YouTube' &&
                   stream.id && (
-                    <div className="absolute bottom-3 left-3 right-3 z-10 h-[65%] overflow-hidden rounded-2xl border border-yellow-500/70 bg-black shadow-xl">
+                    <div className="absolute inset-2 z-10 flex flex-col overflow-hidden rounded-2xl border border-yellow-500/70 bg-black shadow-xl">
 
                       <div className="flex items-center justify-between bg-zinc-900 px-3 py-2">
                         <span className="text-xs font-bold text-yellow-400">
@@ -684,10 +684,11 @@ export default function Home() {
                       </div>
 
                       <iframe
-                        src={chatUrl(stream)}
-                        title="Live Chat"
-                        className="h-[calc(100%-36px)] w-full"
-                      />
+  src={chatUrl(stream)}
+  title="MSF Live Chat"
+  className="min-h-0 w-full flex-1 border-0"
+  allow="autoplay"
+/>
 
                     </div>
                   )}

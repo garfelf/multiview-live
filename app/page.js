@@ -714,6 +714,9 @@ export default function Home() {
           <p className="mt-2 text-xs text-zinc-600">
             BLACK & YELLOW EDITION
           </p>
-        </footer>
+                </footer>
 
-    
+      </div>
+    </main>
+  );
+}

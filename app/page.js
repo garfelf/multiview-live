@@ -557,23 +557,23 @@ export default function Home() {
           />
 
           {/* NAMA CHANNEL */}
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <p className="break-words text-[13px] font-bold leading-tight text-white [overflow-wrap:anywhere]">
-              {channel.name}
-            </p>
+<div className="min-w-0 flex-1 overflow-hidden">
+  <p className="whitespace-nowrap text-[13px] font-bold leading-tight text-white">
+    {channel.name}
+  </p>
 
-            <p
-              className={`mt-2 text-[10px] font-black ${
-                isLive
-                  ? 'text-red-400'
-                  : isError
-                    ? 'text-orange-400'
-                    : 'text-zinc-500'
-              }`}
-            >
-              {status}
-            </p>
-          </div>
+  <p
+    className={`mt-2 text-[10px] font-black ${
+      isLive
+        ? 'text-red-400'
+        : isError
+          ? 'text-orange-400'
+          : 'text-zinc-500'
+    }`}
+  >
+    {status}
+  </p>
+</div>
 
         </button>
       );
